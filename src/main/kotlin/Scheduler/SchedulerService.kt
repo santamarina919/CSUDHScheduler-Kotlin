@@ -1,10 +1,15 @@
 package J.dev.Scheduler
 
 import J.dev.UUIDSerializer
+import io.ktor.server.http.content.CompressedFileType
+import io.ktor.server.request.PipelineRequest
+import io.ktor.server.request.RequestAlreadyConsumedException
+import io.ktor.util.StatelessHmacNonceManager
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.v1.core.alias
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
@@ -383,3 +388,174 @@ fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : 
     }
     return affectedCourses
 }
+
+/**
+ * Class is a mapping using simple data types of the course table
+ */
+@Serializable
+data class CourseDetails(val id :String, val name : String, val units : Double)
+
+/**
+ * Function returns all courses that are related to a specific degree.
+ * Related in this context means that some requirement of that degree
+ * requires a course in the list that is returned
+ */
+fun coursesFrom(degreeId : String) :List<CourseDetails> = transaction {
+
+        RequirementLeaf.join(
+            otherTable = DegreeRequirement,
+            joinType = JoinType.INNER,
+            onColumn = RequirementLeaf.requirementId,
+            otherColumn = DegreeRequirement.requirementId
+        )
+        .join(
+            otherTable = Course,
+            joinType = JoinType.INNER,
+            onColumn = Course.id,
+            otherColumn = RequirementLeaf.courseId
+        )
+            .select(Course.id,Course.name,Course.units)
+            .where { DegreeRequirement.parentMajor eq degreeId }
+            .map {resultRow -> CourseDetails(resultRow[Course.id],resultRow[Course.name],resultRow[Course.units]) }
+
+}
+
+
+@Serializable
+data class NestedRequirementDetails(
+    @Serializable(with = UUIDSerializer::class) val requirementId: UUID,
+    val name : String?,
+    val type : RequirementType,
+    val childRequirements :List<@Serializable(with = UUIDSerializer::class) UUID>,
+    val leafCourses :List<String>
+)
+
+//TODO: add name column to table
+data class RequirementDetails(val requirementId : UUID,val type : RequirementType)
+
+private fun requirementsFrom(degreeId: String) :List<RequirementDetails> = transaction {
+        DegreeRequirement
+            .select(DegreeRequirement.requirementId, DegreeRequirement.type)
+            .where { DegreeRequirement.parentMajor eq degreeId }
+            .map { resultRow ->
+                RequirementDetails(
+                    resultRow[DegreeRequirement.requirementId],
+                    RequirementType.valueOf(resultRow[DegreeRequirement.type])
+                )
+            }
+    }
+
+//TODO: validate function returns whaat is expected
+private fun childrenOfRequirements(requirementId: UUID) = transaction {
+        val degreeRequirementAlias = DegreeRequirement.alias("degreeRequirementAlias")
+        DegreeRequirement
+            .join(
+                otherTable = degreeRequirementAlias,
+                joinType = JoinType.INNER,
+                onColumn = DegreeRequirement.requirementId,
+                otherColumn = degreeRequirementAlias[DegreeRequirement.parentRequirement]
+            )
+            .select(DegreeRequirement.requirementId)
+            .where { DegreeRequirement.requirementId eq requirementId }
+            .map { resultRow -> resultRow[DegreeRequirement.requirementId] }
+    }
+
+
+private fun leafCoursesOfRequirement(requirementId: UUID) = transaction {
+        RequirementLeaf
+            .select(RequirementLeaf.courseId)
+            .where { RequirementLeaf.requirementId eq requirementId}
+            .map { resultRow -> resultRow[RequirementLeaf.courseId] }
+
+    }
+
+
+fun fetchNestedRequirementDetails(degreeId : String): MutableList<NestedRequirementDetails> {
+    val requirementList = mutableListOf<NestedRequirementDetails>()
+    val requirements = requirementsFrom(degreeId)
+    requirements.forEach { requirement ->
+        val children = childrenOfRequirements(requirement.requirementId)
+        val leafCourses = leafCoursesOfRequirement(requirement.requirementId)
+        requirementList.add(NestedRequirementDetails(requirement.requirementId,null,requirement.type,  children,leafCourses))
+    }
+    return requirementList
+}
+
+@Serializable
+data class NestedPrerequisiteDetails(
+        @Serializable(with = UUIDSerializer::class) val prereqId : UUID,
+        val parentCourse : String,
+        val type : RequirementType,
+        val childrenPrereqs :List<@Serializable(with = UUIDSerializer::class) UUID>?,
+        val leafCourses :List<String>
+    )
+
+
+fun prerequisiteDetailsForDegree(degreeId: String): MutableList<List<NestedPrerequisiteDetails>> {
+    val courseList = coursesFrom(degreeId)
+    val returnlist = mutableListOf<List<NestedPrerequisiteDetails>>()
+    println(courseList)
+    courseList.forEach { course ->
+        val prereqList = fetchNestedPrerequisiteDetails(course.id)
+        prereqList?.let {
+            returnlist.add(it)
+        }
+    }
+    return returnlist
+}
+
+data class PrereqDTO(val id : UUID, val parentCourse : String, val parentPrereq : UUID?, val requirementType: RequirementType)
+
+fun fetchNestedPrerequisiteDetails(courseId: String) :List<NestedPrerequisiteDetails>? {
+    lateinit var prereqs :List<PrereqDTO>
+
+    //Maps a requirement id to a list of courses that that requirement needs
+    val leafCourseMap = mutableMapOf<UUID, MutableList<String>>()
+    val childPrereqMap = mutableMapOf<UUID, MutableList<UUID>>()
+
+    transaction {
+        prereqs = Prereq.selectAll()
+            .where { Prereq.parentCourse eq courseId }
+            .map { resultRow ->
+                PrereqDTO(
+                    resultRow[Prereq.id],
+                    resultRow[Prereq.parentCourse],
+                    resultRow[Prereq.parentPrereq],
+                    RequirementType.valueOf(resultRow[Prereq.type]))
+            }
+
+        prereqs.forEach { prereq ->
+            val ids = LeafCourse.select(LeafCourse.courseId)
+                .where { LeafCourse.prereqId eq prereq.id }
+                .map { resultRow -> resultRow[LeafCourse.courseId] }
+
+            ids.forEach { id ->
+                leafCourseMap.putIfAbsent(prereq.id,mutableListOf<String>())
+                leafCourseMap[prereq.id]?.add(id)
+            }
+
+            prereq.parentPrereq?.also { parentId ->
+                childPrereqMap.putIfAbsent(parentId,mutableListOf())
+                childPrereqMap[parentId]?.add(parentId)
+            }
+
+
+        }
+    }
+
+    return prereqs.map { prereq ->
+
+        NestedPrerequisiteDetails(
+            prereq.id,
+            prereq.parentCourse,
+            prereq.requirementType,
+            childPrereqMap[prereq.id],
+            leafCourseMap[prereq.id]!!)
+    }
+        .takeIf { it.isNotEmpty() }
+}
+
+
+
+
+

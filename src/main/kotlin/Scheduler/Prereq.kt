@@ -8,5 +8,7 @@ object Prereq : Table("prereq"){
     val parentCourse = reference("parent_course",Course.id)
     val parentPrereq = optReference("parent_prereq",Prereq.id)
     val type = varchar("type", DEFAULT_MAX_STR_LENGTH)
+
+    override val primaryKey = PrimaryKey(id)
 }
 

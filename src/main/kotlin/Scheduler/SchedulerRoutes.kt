@@ -19,6 +19,7 @@ fun Application.SchedulerRoutes(){
             allDegreePlanEndPoint()
             requirementsOfDegree()
             coursesOfDegree()
+            prerequisiteOfCoursesFromDegree()
         }
     }
 
@@ -68,14 +69,12 @@ fun Route.createDegreePlanEndPoint(){
 
 fun Route.requirementsOfDegree(){
 
-    @Serializable
-    data class EndPointBody(val degreeId :String)
-
     get("api/degree/requirements"){
-        val body = call.receive<EndPointBody>()
+        val degreeId = call.queryParameters[Degree.CONSTANTS.QUERY_ID]
+            ?: throw IllegalStateException("degree id cannot be null")
 
-        val courses = requirementAndCoursesOfDegree(body.degreeId)
-        call.respond(courses )
+        val requirements = fetchNestedRequirementDetails(degreeId)
+        call.respond(requirements)
     }
 }
 
@@ -85,7 +84,7 @@ fun Route.coursesOfDegree() {
         val degreeId = call.queryParameters["degreeId"]
         if(degreeId != null){
 
-            val courses = coursesOfDegree(degreeId)
+            val courses = coursesFrom(degreeId)
             call.respond(courses)
 
         }
@@ -96,7 +95,20 @@ fun Route.coursesOfDegree() {
     }
 }
 
+fun Route.prerequisiteOfCoursesFromDegree(){
+    get("/api/degree/nestedprerequisites"){
+        val degreeId = call.queryParameters[Degree.CONSTANTS.QUERY_ID]
+        if(degreeId != null){
+            val nestedPrerequisites = prerequisiteDetailsForDegree(degreeId)
+            call.respond(nestedPrerequisites)
+        }
+        else
+        {
+            call.respond(HttpStatusCode.BadRequest)
+        }
 
+    }
+}
 
 
 
