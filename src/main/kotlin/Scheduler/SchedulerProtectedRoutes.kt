@@ -25,7 +25,6 @@ fun Application.SchedulerProtectedRoutes(){
             authenticate("auth-session") {
 
                 allPlannedCoursesEndPoint()
-                availableCoursesEndPoint()
                 addCourseToPlanEndPoint()
                 removeCourseFromPlanEndPoint()
                 deleteDegreePlanEndPoint()
@@ -69,15 +68,6 @@ fun Route.deleteDegreePlanEndPoint(){
 }
 
 
-fun Route.availableCoursesEndPoint(){
-
-    get("/api/degree/available"){
-        val planId = UUID.fromString(call.request.queryParameters[DegreePlan.QueryNames.planId])
-
-        call.respond(HttpStatusCode.OK,availableCoursesOfPlan(planId))
-    }
-}
-
 fun Route.addCourseToPlanEndPoint(){
 
     @Serializable
@@ -87,8 +77,8 @@ fun Route.addCourseToPlanEndPoint(){
         val planId = UUID.fromString(call.request.queryParameters[DegreePlan.QueryNames.planId])
 
         val body = call.receive<AddBody>()
-        val newlyAvailable = addCourseToPlan(planId,body.courseId,body.semester)
-        call.respond(newlyAvailable)
+        addCourseToPlan(planId,body.courseId,body.semester)
+        call.respond(HttpStatusCode.OK)
     }
 }
 

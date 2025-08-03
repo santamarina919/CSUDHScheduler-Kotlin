@@ -81,65 +81,13 @@ fun ownerOfDegreePlan(planId :UUID) = transaction {
             .single()
     }
 
-@Serializable
-data class CourseDTO(val courseId :String, val courseName :String, val units :Double)
 
-//TODO: Delete
-fun coursesOfDegree(degreeId :String): List<CourseDTO> {
-    val courseIds = requirementAndCoursesOfDegree(degreeId)
-        .flatMap { it.requiredCourses }
 
-    val courseDTOS = mutableListOf<CourseDTO>()
 
-    courseIds.forEach{ idStr ->
 
-        val courseData = transaction {
-            Course.selectAll()
-                .where(Course.id eq idStr)
-                .single()
-        }
 
-        courseDTOS.add(CourseDTO(courseData[Course.id],courseData[Course.name],courseData[Course.units]))
 
-    }
-    return courseDTOS.toList()
 
-}
-
-fun getPrerequisite(courseId: String) = transaction {
-    Prereq.selectAll()
-        .where(Prereq.parentCourse eq courseId)
-        .toList()
-}
-
-fun getPrerequisiteChildren(prereqId :UUID) = transaction {
-    Prereq.selectAll()
-        .where(Prereq.parentPrereq eq prereqId)
-        .toList()
-}
-
-fun getLeafCoursesOfPrereq(prereqId: UUID) = transaction {
-    LeafCourse.selectAll()
-        .where(LeafCourse.prereqId eq prereqId)
-        .toList()
-}
-
-fun allDegreeRequirements(degreeId: String) = transaction {
-    DegreeRequirement.join(
-        Degree,
-        JoinType.INNER,
-        additionalConstraint = {Degree.id eq DegreeRequirement.parentMajor}
-    )
-        .select(DegreeRequirement.requirementId,DegreeRequirement.parentRequirement,DegreeRequirement.type)
-        .where(DegreeRequirement.parentMajor eq degreeId)
-        .toList()
-}
-
-fun allDegreeRequirementsLeafCourses(requirementId :UUID) = transaction {
-    RequirementLeaf.select(RequirementLeaf.requirementId,RequirementLeaf.courseId)
-        .where(RequirementLeaf.requirementId eq requirementId)
-        .toList()
-}
 
 @Serializable
 data class RequirementNode(@Serializable(with = UUIDSerializer::class) val requirementId :UUID,
@@ -147,149 +95,10 @@ data class RequirementNode(@Serializable(with = UUIDSerializer::class) val requi
                            val children : MutableList<RequirementNode>,
                            val requiredCourses :MutableList<String>)
 
-fun requirementAndCoursesOfDegree(degreeId :String): MutableCollection<RequirementNode> {
-    val requirementMap = mutableMapOf<UUID,RequirementNode>()
-
-    val requirements = allDegreeRequirements(degreeId)
-
-    requirements.forEach {
-        requirementMap[it[DegreeRequirement.requirementId]] =
-            RequirementNode(
-                it[DegreeRequirement.requirementId],
-                RequirementType.valueOf(it[DegreeRequirement.type]),
-                mutableListOf(),
-                mutableListOf()
-            )
-    }
-
-    requirements.forEach {
-        val selfId = it[DegreeRequirement.requirementId]
-        val parentId = it[DegreeRequirement.parentRequirement]
-        if(parentId != null)
-        requirementMap[parentId]!!.children.add(requirementMap[selfId]!!)
-    }
-
-    requirements.forEach { req ->
-        val leafNodes = allDegreeRequirementsLeafCourses(req[DegreeRequirement.requirementId])
-        leafNodes.forEach { leaf ->
-            requirementMap[leaf[RequirementLeaf.requirementId]]!!.requiredCourses.add(leaf[RequirementLeaf.courseId])
-        }
-    }
-
-    return requirementMap.values;
-}
-
-//TODO: delete
-@Serializable
-data class AvailableCourse(val courseId :String,val semesterAvailable :Int){}
-
-/**
- * Returns a list of courses that can be added to a plan
- */
-//TODO: DELETE
-fun availableCoursesOfPlan(planId :UUID): MutableList<AvailableCourse> {
-    val completed = allCompletedCoursesFrom(planId)
-
-    val completedByCourseId = completed.associateBy { it.courseId }
 
 
-    val uncompletedCourses = coursesOfDegree("CSC")
-        .filter{ !completedByCourseId.contains(it.courseId) }
-    val available = mutableListOf<AvailableCourse>()
-
-    uncompletedCourses.forEach {
-        val rootPrereq = getPrerequisite(it.courseId)
-        println(rootPrereq)
-        if(rootPrereq.isEmpty()){
-            available.add(AvailableCourse(it.courseId,0))
-        }
-        else{
-            val semesterAvail = isValidTree(rootPrereq.single(),completedByCourseId)
-            if(semesterAvail != null){
-                available.add(AvailableCourse(it.courseId,semesterAvail + 1))
-            }
-        }
-    }
-    return available
-
-}
-
-/**
- * Determines if a given enrollment record satisfies a non-null prerequisite tree.
- */
-fun isValidTree(node: ResultRow, completedByCourseId: Map<String,EnrollmentRecord>) :Int? {
-    val type = RequirementType.valueOf(node[Prereq.type])
-    val leafCourses = getLeafCoursesOfPrereq(node[Prereq.id])
-    val childrenPrerequisites = getPrerequisiteChildren(node[Prereq.id])
-
-    var validNode = false
-
-    var semesterAvail = -1
-
-    //The type of prerequisite node determines which function is called. The function then applies a set of rules against the plan
-    //to determine if it is satisfied
-    when(type) {
-        RequirementType.AND -> {
-            var latestSemesterPCompleted = -1
-
-            val validCourseCompletion = leafCourses.all {
-                val enrollmentRecord = completedByCourseId[it[LeafCourse.courseId]]
-                if(enrollmentRecord != null){
-                    latestSemesterPCompleted = Math.max(latestSemesterPCompleted,enrollmentRecord.semester)
-                    true
-                }
-                else{
-                    false
-                }
-            }
 
 
-            val validChildPrereqCompletion = childrenPrerequisites.all {
-                val latestChildPCompleted = isValidTree(it,completedByCourseId)
-                if(latestChildPCompleted != null){
-                    latestSemesterPCompleted = Math.max(latestSemesterPCompleted,latestChildPCompleted)
-                }
-                latestChildPCompleted != null
-            }
-
-
-            validNode = validCourseCompletion && validChildPrereqCompletion
-            semesterAvail = latestSemesterPCompleted
-        }
-
-        RequirementType.OR -> {
-            var validCourseCompletion = false
-            var earliestSemesterPCompleted = Int.MAX_VALUE
-            leafCourses.forEach{
-                val enrollmentRecord = completedByCourseId[it[Course.id]]
-                if(enrollmentRecord != null){
-                    earliestSemesterPCompleted = Math.min(earliestSemesterPCompleted,enrollmentRecord.semester)
-                    validCourseCompletion = true
-                }
-            }
-
-
-            val validChildPrereqCompletion = childrenPrerequisites.any{
-                val earliestchildPCompleted = isValidTree(it,completedByCourseId)
-                if(earliestchildPCompleted != null){
-                    earliestSemesterPCompleted = Math.min(earliestSemesterPCompleted,earliestchildPCompleted)
-                }
-                earliestchildPCompleted != null
-            }
-
-            validNode = validCourseCompletion || validChildPrereqCompletion
-            semesterAvail = earliestSemesterPCompleted
-        }
-    }
-
-
-    if(!validNode){
-        return null
-    }
-
-
-    return semesterAvail
-}
 
 /**
  * Function returns a list of course ids where they all list the course in function paramateras a prerequisite.
@@ -321,36 +130,13 @@ fun coursesThatHavePreqreuisite(courseId :String): List<String> {
 
 }
 
-fun determineAvailability(affectedCourses: List<String>, planId :UUID): MutableList<AvailableCourse> {
-    val availableCoursesQ = mutableListOf<AvailableCourse>()
-
-    val coursesTaken = allCompletedCoursesFrom(planId).associateBy { it.courseId }
-
-    affectedCourses.forEach { courseId ->
-        val prereqs = getPrerequisite(courseId)
-
-        val semesterAvailable = isValidTree(prereqs.single(),coursesTaken)
-
-        if(semesterAvailable != null){
-            val newlyAvailable = transaction {
-                Course.selectAll()
-                    .where(Course.id eq courseId)
-                    .map { AvailableCourse(it[Course.id],semesterAvailable + 1) }
-                    .single()
-            }
-            availableCoursesQ.add(newlyAvailable)
-        }
-    }
-
-
-    return availableCoursesQ
-}
 
 
 
 
 
-fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) : MutableList<AvailableCourse> {
+
+fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) {
     transaction {
         Enrollment.insert {
             it[Enrollment.planId] = planId
@@ -359,11 +145,8 @@ fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) : MutableLis
         }
     }
 
-    val affectedCourses = coursesThatHavePreqreuisite(courseId)
 
-    val newlyAvailableCourse = determineAvailability(affectedCourses,planId)
 
-    return newlyAvailableCourse
 }
 
 fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : Boolean): List<String> {
@@ -445,7 +228,6 @@ private fun requirementsFrom(degreeId: String) :List<RequirementDetails> = trans
             }
     }
 
-//TODO: validate function returns whaat is expected
 private fun childrenOfRequirements(requirementId: UUID) = transaction {
         val degreeRequirementAlias = DegreeRequirement.alias("degreeRequirementAlias")
         DegreeRequirement
