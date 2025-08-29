@@ -1,8 +1,6 @@
 package J.dev.Scheduler
 
-import J.dev.Individuals.IndividualSession
 import J.dev.ProtectedPlugin
-import J.dev.UUIDSerializer
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
@@ -28,6 +26,7 @@ fun Application.SchedulerProtectedRoutes(){
                 addCourseToPlanEndPoint()
                 removeCourseFromPlanEndPoint()
                 deleteDegreePlanEndPoint()
+                planDetails()
 
             }
 
@@ -40,17 +39,25 @@ fun Application.SchedulerProtectedRoutes(){
     }
 }
 
+fun Route.planDetails(){
+    get("api/plan/details"){
+        val planId = call.request.queryParameters[DegreePlan.CONSTANTS.planId]
+            ?: IllegalStateException("Missing plan id from api/plan/details route")
+        val details = fetchPlanDetails(UUID.fromString(planId as String))
+        call.respond(details)
+    }
+}
+
 
 fun Route.allPlannedCoursesEndPoint(){
 
 
 
-    get("/api/degree/planned"){
+    get("/api/plan/planned"){
 
 
-        val planId = call.request.queryParameters[DegreePlan.QueryNames.planId]
+        val planId = call.request.queryParameters[DegreePlan.CONSTANTS.planId]
         val courses = allCompletedCoursesFrom(UUID.fromString(planId))
-        println(courses)
         call.respond(HttpStatusCode.OK, courses)
     }
 
@@ -59,7 +66,7 @@ fun Route.allPlannedCoursesEndPoint(){
 fun Route.deleteDegreePlanEndPoint(){
 
     delete("api/degree/delete"){
-        val planIdAsStr = call.request.queryParameters[DegreePlan.QueryNames.planId] ?: "Plan Id cannot be null"
+        val planIdAsStr = call.request.queryParameters[DegreePlan.CONSTANTS.planId] ?: "Plan Id cannot be null"
         val planId = UUID.fromString(planIdAsStr)
         deletePlan(planId)
         call.respond(HttpStatusCode.OK)
@@ -74,7 +81,7 @@ fun Route.addCourseToPlanEndPoint(){
     data class AddBody(val courseId :String, val semester :Int)
 
     post("/api/degree/add"){
-        val planId = UUID.fromString(call.request.queryParameters[DegreePlan.QueryNames.planId])
+        val planId = UUID.fromString(call.request.queryParameters[DegreePlan.CONSTANTS.planId])
 
         val body = call.receive<AddBody>()
         addCourseToPlan(planId,body.courseId,body.semester)
@@ -87,7 +94,7 @@ fun Route.removeCourseFromPlanEndPoint(){
     data class RemoveBody(val courseId :String,val removeApproved :Boolean)
 
     post("/api/degree/remove"){
-        val planId = UUID.fromString(call.request.queryParameters[DegreePlan.QueryNames.planId])
+        val planId = UUID.fromString(call.request.queryParameters[DegreePlan.CONSTANTS.planId])
 
         val body = call.receive<RemoveBody>()
         val response = removeCourseFromPlan(planId,body.courseId, body.removeApproved)

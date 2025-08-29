@@ -9,7 +9,7 @@ import java.util.*
 
 object DegreePlan : Table("degree_plan") {
 
-    object QueryNames{
+    object CONSTANTS{
         val planId = "planId"
     }
 

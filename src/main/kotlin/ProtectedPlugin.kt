@@ -29,8 +29,8 @@ val ProtectedPlugin = createRouteScopedPlugin("ProtectedPlugin"){
 
         val params = call.request.queryParameters
 
-        if(params.contains(DegreePlan.QueryNames.planId)){
-            if(!validPermission(params[DegreePlan.QueryNames.planId]!!,sessionInfo.username)){
+        if(params.contains(DegreePlan.CONSTANTS.planId)){
+            if(!validPermission(params[DegreePlan.CONSTANTS.planId]!!,sessionInfo.username)){
                 call.respond(HttpStatusCode.Unauthorized,null)
                 return@onCall
             }

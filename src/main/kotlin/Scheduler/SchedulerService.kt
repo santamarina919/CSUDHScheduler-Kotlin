@@ -64,6 +64,16 @@ fun deletePlan(planId :UUID){
     }
 }
 
+fun rootsOfDegree(degreeId: String) =
+    transaction {
+        DegreeRequirement
+            .select(DegreeRequirement.requirementId)
+            .where { (DegreeRequirement.parentMajor eq degreeId) and (DegreeRequirement.parentRequirement eq null) }
+            .map { resultRow -> resultRow[DegreeRequirement.requirementId].toString() }
+    }
+
+
+
 @Serializable
 data class EnrollmentRecord(val courseId :String, val semester :Int)
 
@@ -81,12 +91,23 @@ fun ownerOfDegreePlan(planId :UUID) = transaction {
             .single()
     }
 
+@Serializable
+data class PlanDetails(@Serializable(with = UUIDSerializer::class) val id : UUID, val name : String, val term : Term, val year : Int, val degreeId: String)
 
-
-
-
-
-
+fun fetchPlanDetails(planId : UUID) = transaction {
+    DegreePlan.selectAll()
+        .where { DegreePlan.id eq planId }
+        .map { resultRow ->
+            PlanDetails(
+                resultRow[DegreePlan.id],
+                resultRow[DegreePlan.name],
+                Term.valueOf(resultRow[DegreePlan.term]),
+                resultRow[DegreePlan.year],
+                resultRow[DegreePlan.majorId]
+            )
+        }
+        .first()
+}
 
 
 @Serializable
@@ -129,12 +150,6 @@ fun coursesThatHavePreqreuisite(courseId :String): List<String> {
 
 
 }
-
-
-
-
-
-
 
 fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) {
     transaction {
@@ -237,9 +252,9 @@ private fun childrenOfRequirements(requirementId: UUID) = transaction {
                 onColumn = DegreeRequirement.requirementId,
                 otherColumn = degreeRequirementAlias[DegreeRequirement.parentRequirement]
             )
-            .select(DegreeRequirement.requirementId)
+            .selectAll()
             .where { DegreeRequirement.requirementId eq requirementId }
-            .map { resultRow -> resultRow[DegreeRequirement.requirementId] }
+            .map { resultRow -> resultRow[degreeRequirementAlias[DegreeRequirement.requirementId]] }
     }
 
 
@@ -252,6 +267,16 @@ private fun leafCoursesOfRequirement(requirementId: UUID) = transaction {
     }
 
 
+@Serializable
+data class NestedPrerequisiteDetails(
+        @Serializable(with = UUIDSerializer::class) val prereqId : UUID,
+        @Serializable(with = UUIDSerializer::class) val parentPrereq : UUID?,
+        val parentCourse : String,
+        val type : RequirementType,
+        val childrenPrereqs :List<@Serializable(with = UUIDSerializer::class) UUID>?,
+        val leafCourses :List<String>
+    )
+
 fun fetchNestedRequirementDetails(degreeId : String): MutableList<NestedRequirementDetails> {
     val requirementList = mutableListOf<NestedRequirementDetails>()
     val requirements = requirementsFrom(degreeId)
@@ -263,17 +288,8 @@ fun fetchNestedRequirementDetails(degreeId : String): MutableList<NestedRequirem
     return requirementList
 }
 
-@Serializable
-data class NestedPrerequisiteDetails(
-        @Serializable(with = UUIDSerializer::class) val prereqId : UUID,
-        val parentCourse : String,
-        val type : RequirementType,
-        val childrenPrereqs :List<@Serializable(with = UUIDSerializer::class) UUID>?,
-        val leafCourses :List<String>
-    )
 
-
-fun prerequisiteDetailsForDegree(degreeId: String): MutableList<List<NestedPrerequisiteDetails>> {
+fun prerequisiteDetailsForDegree(degreeId: String): List<NestedPrerequisiteDetails> {
     val courseList = coursesFrom(degreeId)
     val returnlist = mutableListOf<List<NestedPrerequisiteDetails>>()
     println(courseList)
@@ -283,7 +299,7 @@ fun prerequisiteDetailsForDegree(degreeId: String): MutableList<List<NestedPrere
             returnlist.add(it)
         }
     }
-    return returnlist
+    return returnlist.flatten()
 }
 
 data class PrereqDTO(val id : UUID, val parentCourse : String, val parentPrereq : UUID?, val requirementType: RequirementType)
@@ -307,6 +323,7 @@ fun fetchNestedPrerequisiteDetails(courseId: String) :List<NestedPrerequisiteDet
             }
 
         prereqs.forEach { prereq ->
+            childPrereqMap.putIfAbsent(prereq.id,mutableListOf())
             val ids = LeafCourse.select(LeafCourse.courseId)
                 .where { LeafCourse.prereqId eq prereq.id }
                 .map { resultRow -> resultRow[LeafCourse.courseId] }
@@ -317,8 +334,7 @@ fun fetchNestedPrerequisiteDetails(courseId: String) :List<NestedPrerequisiteDet
             }
 
             prereq.parentPrereq?.also { parentId ->
-                childPrereqMap.putIfAbsent(parentId,mutableListOf())
-                childPrereqMap[parentId]?.add(parentId)
+                childPrereqMap[parentId]?.add(prereq.id)
             }
 
 
@@ -329,6 +345,7 @@ fun fetchNestedPrerequisiteDetails(courseId: String) :List<NestedPrerequisiteDet
 
         NestedPrerequisiteDetails(
             prereq.id,
+            prereq.parentPrereq,
             prereq.parentCourse,
             prereq.requirementType,
             childPrereqMap[prereq.id],

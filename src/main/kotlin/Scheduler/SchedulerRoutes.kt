@@ -20,11 +20,11 @@ fun Application.SchedulerRoutes(){
             requirementsOfDegree()
             coursesOfDegree()
             prerequisiteOfCoursesFromDegree()
+            degreeRequirementRoots()
         }
     }
 
 }
-
 
 fun Route.allMajorsEndPoint(){
 
@@ -43,7 +43,15 @@ fun Route.allDegreePlanEndPoint() {
     }
 }
 
+fun Route.degreeRequirementRoots(){
+    get("/api/degree/roots"){
+        val degreeId = call.queryParameters[Degree.CONSTANTS.QUERY_ID]
+            ?: throw IllegalStateException("No degree id present in query")
 
+        val roots = rootsOfDegree(degreeId)
+        call.respond(roots)
+    }
+}
 
 fun Route.createDegreePlanEndPoint(){
 
@@ -81,7 +89,7 @@ fun Route.requirementsOfDegree(){
 fun Route.coursesOfDegree() {
 
     get("api/degree/courses"){
-        val degreeId = call.queryParameters["degreeId"]
+        val degreeId = call.queryParameters[Degree.CONSTANTS.QUERY_ID]
         if(degreeId != null){
 
             val courses = coursesFrom(degreeId)
@@ -96,7 +104,7 @@ fun Route.coursesOfDegree() {
 }
 
 fun Route.prerequisiteOfCoursesFromDegree(){
-    get("/api/degree/nestedprerequisites"){
+    get("/api/degree/prerequisites"){
         val degreeId = call.queryParameters[Degree.CONSTANTS.QUERY_ID]
         if(degreeId != null){
             val nestedPrerequisites = prerequisiteDetailsForDegree(degreeId)
