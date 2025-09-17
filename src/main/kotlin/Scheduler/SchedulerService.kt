@@ -13,6 +13,7 @@ import org.jetbrains.exposed.v1.core.alias
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.insertReturning
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -151,7 +152,7 @@ fun coursesThatHavePreqreuisite(courseId :String): List<String> {
 
 }
 
-fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) {
+fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) =
     transaction {
         Enrollment.insert {
             it[Enrollment.planId] = planId
@@ -159,10 +160,6 @@ fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) {
             it[Enrollment.semester] = semester
         }
     }
-
-
-
-}
 
 fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : Boolean): List<String> {
     val completedCourses = allCompletedCoursesFrom(planId)
@@ -173,14 +170,16 @@ fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : 
         .toMutableList()
 
     affectedCourses.add(courseId)
-
+    println(courseId)
     if(cascadeRemoveApproved) {
 
-        affectedCourses.forEach { idStr ->
-            transaction {
+        transaction {
+            affectedCourses.forEach { idStr ->
+
                 Enrollment.deleteWhere {
                     (Enrollment.planId eq planId) and (Enrollment.courseId eq idStr)
                 }
+
             }
         }
     }
