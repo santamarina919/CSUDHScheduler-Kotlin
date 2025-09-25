@@ -23,7 +23,9 @@ fun Application.configureHTTP() {
         allowMethod(HttpMethod.Patch)
         allowHeader(HttpHeaders.Authorization)
         allowHeader(HttpHeaders.AccessControlAllowCredentials)
+        allowHeader(HttpHeaders.AccessControlAllowOrigin)
         allowHeader(HttpHeaders.ContentType)
-        anyHost() // @TODO: Don't do this in production if possible. Try to limit it.
+        allowCredentials = true
+        hosts.add("http://localhost:4200")
     }
 }
