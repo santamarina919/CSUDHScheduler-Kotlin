@@ -97,9 +97,9 @@ fun Route.removeCourseFromPlanEndPoint(){
         val planId = UUID.fromString(call.request.queryParameters[DegreePlan.CONSTANTS.planId])
 
         val body = call.receive<RemoveBody>()
-        val response = removeCourseFromPlan(planId,body.courseId, body.removeApproved)
+        removeCourseFromPlan(planId,body.courseId, body.removeApproved)
 
-        call.respond(response)
+        call.respond(HttpStatusCode.OK)
     }
 }
 

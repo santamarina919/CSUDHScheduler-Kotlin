@@ -1,19 +1,13 @@
 package J.dev.Scheduler
 
 import J.dev.UUIDSerializer
-import io.ktor.server.http.content.CompressedFileType
-import io.ktor.server.request.PipelineRequest
-import io.ktor.server.request.RequestAlreadyConsumedException
-import io.ktor.util.StatelessHmacNonceManager
 import kotlinx.serialization.Serializable
 import org.jetbrains.exposed.v1.core.JoinType
-import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.v1.core.alias
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
-import org.jetbrains.exposed.v1.jdbc.insertReturning
 import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -118,40 +112,6 @@ data class RequirementNode(@Serializable(with = UUIDSerializer::class) val requi
                            val requiredCourses :MutableList<String>)
 
 
-
-
-
-
-/**
- * Function returns a list of course ids where they all list the course in function paramateras a prerequisite.
- */
-fun coursesThatHavePreqreuisite(courseId :String): List<String> {
-    val courses = mutableListOf<List<String>>()
-
-    transaction {
-        val prereqNodes = LeafCourse.select(LeafCourse.prereqId)
-            .where(LeafCourse.courseId eq courseId)
-            .toList()
-         prereqNodes.forEach{node ->
-            val nodeId = node[LeafCourse.prereqId]
-
-             val currCourseList = transaction {
-                Prereq.select(Prereq.parentCourse)
-                    .where(Prereq.id eq nodeId)
-                    .map { it[Prereq.parentCourse] }
-            }
-
-             courses.add(currCourseList)
-
-         }
-    }
-
-    return courses.toList().flatten()
-
-
-
-}
-
 fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) =
     transaction {
         Enrollment.insert {
@@ -161,30 +121,17 @@ fun addCourseToPlan(planId : UUID, courseId: String, semester: Int) =
         }
     }
 
-fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : Boolean): List<String> {
-    val completedCourses = allCompletedCoursesFrom(planId)
-        .associateBy { it.courseId }
+fun removeCourseFromPlan(planId :UUID, courseId :String,cascadeRemoveApproved : Boolean) {
 
-    val affectedCourses = coursesThatHavePreqreuisite(courseId)
-        .filter { completedCourses.contains(it) }
-        .toMutableList()
-
-    affectedCourses.add(courseId)
-    println(courseId)
-    if(cascadeRemoveApproved) {
-
-        transaction {
-            affectedCourses.forEach { idStr ->
-
-                Enrollment.deleteWhere {
-                    (Enrollment.planId eq planId) and (Enrollment.courseId eq idStr)
-                }
-
+    transaction {
+            Enrollment.deleteWhere {
+                (Enrollment.planId eq planId) and (Enrollment.courseId eq courseId)
             }
+
         }
     }
-    return affectedCourses
-}
+
+
 
 /**
  * Class is a mapping using simple data types of the course table
