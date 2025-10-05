@@ -1,3 +1,4 @@
+import org.jetbrains.kotlin.gradle.plugin.KotlinTarget
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -15,6 +16,7 @@ application {
 repositories {
     mavenCentral()
 }
+
 
 dependencies {
     implementation(libs.ktor.server.core)
@@ -46,3 +48,6 @@ ktor {
     }
 }
 
+kotlin {
+    jvmToolchain(23)
+}
