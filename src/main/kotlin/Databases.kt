@@ -19,10 +19,10 @@ import org.jetbrains.exposed.v1.jdbc.Database
 object DatabaseSettings {
     val db by lazy {
         Database.connect(
-            url = "jdbc:postgresql://localhost:5432/kotlinscheduler",
+            url = System.getenv("DATABASE_URL") ?: "Not a url",
             driver = "org.postgresql.Driver",
-            user = "postgres",
-            password = "1234"
+            user = System.getenv("DATABASE_USERNAME") ?: "Not a username",
+            password = System.getenv("DATABASE_PASSWORD") ?: "Not a password"
         )
     }
 }

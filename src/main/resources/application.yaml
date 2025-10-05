@@ -5,8 +5,4 @@ ktor:
             - J.dev.Individuals.IndividualRoutesKt.IndividualRoutes
     deployment:
       port: 8080
-      host: localhost #192.168.50.237
-postgres:
-  url: "jdbc:postgresql://localhost:5432/kotlinscheduler"
-  user: postgres
-  password: 1234
+      host: localhost

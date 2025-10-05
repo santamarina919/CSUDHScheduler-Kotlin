@@ -39,3 +39,10 @@ dependencies {
     testImplementation("io.ktor:ktor-server-test-host-jvm:3.1.3")
 
 }
+
+ktor {
+    fatJar {
+        archiveFileName.set("scheduler.jar")
+    }
+}
+

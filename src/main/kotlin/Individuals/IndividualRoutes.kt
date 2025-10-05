@@ -15,8 +15,16 @@ fun Application.IndividualRoutes() {
     routing {
         signUp()
         logIn()
+        testEndpoint()
+
     }
 
+}
+
+fun Route.testEndpoint() {
+    get("/api/test") {
+        call.respondText("Response from aws")
+    }
 }
 
 fun Route.signUp() {

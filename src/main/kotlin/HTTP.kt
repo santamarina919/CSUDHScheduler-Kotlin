@@ -26,6 +26,6 @@ fun Application.configureHTTP() {
         allowHeader(HttpHeaders.AccessControlAllowOrigin)
         allowHeader(HttpHeaders.ContentType)
         allowCredentials = true
-        hosts.add("http://localhost:4200")
+        anyHost()
     }
 }
